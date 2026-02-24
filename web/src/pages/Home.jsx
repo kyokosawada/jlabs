@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import 'leaflet/dist/leaflet.css';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
 
 const IPV4_REGEX =
   /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
@@ -28,6 +41,14 @@ function loadHistory() {
 
 function saveHistory(history) {
   localStorage.setItem('searchHistory', JSON.stringify(history));
+}
+
+function ChangeView({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [center, map]);
+  return null;
 }
 
 function Home() {
@@ -307,6 +328,43 @@ function Home() {
               </div>
             </div>
           )}
+
+          {/* Map */}
+          {currentGeo && currentGeo.loc && !loading && (() => {
+            const parts = currentGeo.loc.split(',');
+            const lat = parseFloat(parts[0]);
+            const lng = parseFloat(parts[1]);
+            if (isNaN(lat) || isNaN(lng)) return null;
+            const position = [lat, lng];
+            const locationLabel = [currentGeo.city, currentGeo.region, currentGeo.country]
+              .filter(Boolean)
+              .join(', ');
+            return (
+              <div style={styles.card}>
+                <h2 style={styles.sectionTitle}>Location Map</h2>
+                <div style={{ borderRadius: '8px', overflow: 'hidden', height: '400px' }}>
+                  <MapContainer
+                    center={position}
+                    zoom={12}
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <ChangeView center={position} />
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    <Marker position={position}>
+                      <Popup>
+                        <strong>{currentGeo.ip}</strong>
+                        {locationLabel && <br />}
+                        {locationLabel}
+                      </Popup>
+                    </Marker>
+                  </MapContainer>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Search history */}
           {searchHistory.length > 0 && (
