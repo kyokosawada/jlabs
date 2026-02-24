@@ -41,6 +41,8 @@ function Home() {
   const [validationError, setValidationError] = useState('');
   const [searchHistory, setSearchHistory] = useState(loadHistory);
   const [isSearchResult, setIsSearchResult] = useState(false);
+  const [selectedHistory, setSelectedHistory] = useState(new Set());
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const user = (() => {
     try {
@@ -151,6 +153,58 @@ function Home() {
     navigate('/login');
   }
 
+  function handleHistoryClick(entry) {
+    setSearchIp(entry.ip);
+    setValidationError('');
+    setError('');
+    setHistoryLoading(true);
+    setLoading(true);
+    (async () => {
+      try {
+        const data = await fetchGeo(entry.ip);
+        setCurrentGeo(data);
+        setIsSearchResult(true);
+      } catch (err) {
+        const msg =
+          err.response?.data?.error?.message ||
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to fetch geolocation for that IP.';
+        setError(msg);
+      } finally {
+        setLoading(false);
+        setHistoryLoading(false);
+      }
+    })();
+  }
+
+  function toggleHistorySelection(idx) {
+    setSelectedHistory((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedHistory.size === searchHistory.length) {
+      setSelectedHistory(new Set());
+    } else {
+      setSelectedHistory(new Set(searchHistory.map((_, i) => i)));
+    }
+  }
+
+  function handleDeleteSelected() {
+    const updated = searchHistory.filter((_, idx) => !selectedHistory.has(idx));
+    setSearchHistory(updated);
+    saveHistory(updated);
+    setSelectedHistory(new Set());
+  }
+
   function formatTimestamp(iso) {
     try {
       const d = new Date(iso);
@@ -257,7 +311,41 @@ function Home() {
           {/* Search history */}
           {searchHistory.length > 0 && (
             <div style={styles.card}>
-              <h2 style={styles.sectionTitle}>Search History</h2>
+              <div style={styles.historyHeader}>
+                <div style={styles.historyHeaderLeft}>
+                  <label style={styles.checkboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={
+                        selectedHistory.size === searchHistory.length &&
+                        searchHistory.length > 0
+                      }
+                      onChange={toggleSelectAll}
+                      style={styles.checkbox}
+                    />
+                    <span style={styles.selectAllText}>Select All</span>
+                  </label>
+                  <h2 style={{ ...styles.sectionTitle, margin: 0 }}>
+                    Search History
+                  </h2>
+                </div>
+                {selectedHistory.size > 0 && (
+                  <button
+                    onClick={handleDeleteSelected}
+                    style={styles.deleteSelectedBtn}
+                  >
+                    Delete Selected ({selectedHistory.size})
+                  </button>
+                )}
+              </div>
+              {historyLoading && (
+                <div style={styles.historyLoadingBar}>
+                  <div style={styles.spinner} />
+                  <span style={{ marginLeft: 8, fontSize: '13px', color: '#6b7280' }}>
+                    Loading geolocation...
+                  </span>
+                </div>
+              )}
               <div style={styles.historyList}>
                 {searchHistory.map((entry, idx) => (
                   <div
@@ -265,7 +353,28 @@ function Home() {
                     style={styles.historyItem}
                   >
                     <div style={styles.historyMain}>
-                      <span style={styles.historyIp}>{entry.ip}</span>
+                      <input
+                        type="checkbox"
+                        checked={selectedHistory.has(idx)}
+                        onChange={() => toggleHistorySelection(idx)}
+                        style={styles.checkbox}
+                      />
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        data-history-ip
+                        onClick={() => handleHistoryClick(entry)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleHistoryClick(entry);
+                          }
+                        }}
+                        style={styles.historyIpClickable}
+                        title={`Look up ${entry.ip}`}
+                      >
+                        {entry.ip}
+                      </span>
                       <span style={styles.historyLocation}>
                         {[entry.city, entry.region, entry.country]
                           .filter((v) => v && v !== '-')
@@ -283,10 +392,19 @@ function Home() {
         </div>
       </main>
 
-      {/* Spinner keyframes injected via style tag */}
+      {/* Spinner keyframes and hover styles injected via style tag */}
       <style>{`
         @keyframes jlabs-spin {
           to { transform: rotate(360deg); }
+        }
+        [data-history-ip]:hover {
+          text-decoration-color: #4361ee !important;
+          opacity: 0.85;
+        }
+        [data-history-ip]:focus-visible {
+          outline: 2px solid #4361ee;
+          outline-offset: 2px;
+          border-radius: 2px;
         }
       `}</style>
     </div>
@@ -484,6 +602,58 @@ const styles = {
   },
 
   /* History */
+  historyHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+    flexWrap: 'wrap',
+    gap: '12px',
+  },
+  historyHeaderLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    cursor: 'pointer',
+  },
+  checkbox: {
+    width: '16px',
+    height: '16px',
+    accentColor: '#4361ee',
+    cursor: 'pointer',
+    margin: 0,
+    flexShrink: 0,
+  },
+  selectAllText: {
+    fontSize: '13px',
+    fontWeight: 500,
+    color: '#6b7280',
+    userSelect: 'none',
+  },
+  deleteSelectedBtn: {
+    padding: '7px 16px',
+    fontSize: '13px',
+    fontWeight: 600,
+    color: '#ffffff',
+    background: '#ef4444',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    transition: 'background 0.2s',
+  },
+  historyLoadingBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '10px 0',
+    marginBottom: '4px',
+  },
   historyList: {
     display: 'flex',
     flexDirection: 'column',
@@ -503,11 +673,15 @@ const styles = {
     alignItems: 'center',
     gap: '12px',
   },
-  historyIp: {
+  historyIpClickable: {
     fontSize: '14px',
     fontWeight: 600,
     color: '#4361ee',
     fontFamily: 'monospace',
+    cursor: 'pointer',
+    textDecoration: 'underline',
+    textDecorationColor: 'transparent',
+    transition: 'text-decoration-color 0.2s',
   },
   historyLocation: {
     fontSize: '13px',
